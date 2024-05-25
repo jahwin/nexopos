@@ -1,0 +1,55 @@
+version: '3.7'
+networks:
+  dbnet:
+    driver: bridge
+services:
+  app:
+    build:
+      args:
+        container_project_path: /var/www/html/
+        uid: 1000
+        user: root
+      context: .
+      dockerfile: ./DockerFile
+    image: web
+    ports:
+      - 3000:80
+    volumes:
+      - ./:/var/www/html/
+    networks:
+      - dbnet
+  db:
+    image: mariadb:latest
+    container_name: db
+    restart: unless-stopped
+    environment:
+      MARIADB_USER: root
+      MARIADB_PASSWORD: W4anw8zNMXkJ4V6SnbCJAHWIN
+      MARIADB_ROOT_PASSWORD: W4anw8zNMXkJ4V6SnbCJAHWIN
+      MARIADB_DATABASE: db_nexopos
+    ports:
+      - '3307:3306'
+    expose:
+      - '3306'
+    volumes:
+      - mysql:/var/lib/mysql
+    networks:
+      - dbnet
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    ports:
+      - 3001:80
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_PASSWORD: 'W4anw8zNMXkJ4V6SnbCJAHWIN'
+      UPLOAD_LIMIT: 100M
+    restart: unless-stopped
+    networks:
+      - dbnet
+    depends_on:
+      - db
+volumes:
+  mysql:
+    driver: local
