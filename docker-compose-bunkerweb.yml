@@ -1,0 +1,134 @@
+version: '3.7'
+networks:
+  dbnet:
+    driver: bridge
+  bw-universe:
+    name: bw-universe
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.20.30.0/24
+  bw-services:
+    name: bw-services
+  bw-docker:
+    name: bw-docker
+services:
+  bunkerweb:
+    image: bunkerity/bunkerweb:1.5.5
+    ports:
+      - 80:8080
+      - 443:8443
+    labels:
+      - "bunkerweb.INSTANCE=yes"
+    environment:
+      - SERVER_NAME=bunkerweb.djeembe.com pos.djeembe.com
+      - MULTISITE=yes
+      - DATABASE_URI=mariadb+pymysql://bunkerweb:changeme@bw-db:3306/db
+      - API_WHITELIST_IP=127.0.0.0/8 10.20.30.0/24
+      - USE_CLIENT_CACHE=yes
+      - USE_GZIP=yes
+      - USE_REVERSE_PROXY=yes
+      - REVERSE_PROXY_URL=/
+      - pos.djeembe.com_REVERSE_PROXY_HOST=http://app:80
+      - bunkerweb.djeembe.com_USE_UI=yes
+      - bunkerweb.djeembe.com_REVERSE_PROXY_HOST=http://bw-ui:7000
+      - bunkerweb.djeembe.com_INTERCEPTED_ERROR_CODES=400 404 405 413 429 500 501 502 503 504
+    networks:
+      - bw-universe
+      - bw-services
+  bw-scheduler:
+    image: bunkerity/bunkerweb-scheduler:1.5.5
+    depends_on:
+      - bunkerweb
+      - bw-docker
+    environment:
+      - DATABASE_URI=mariadb+pymysql://bunkerweb:changeme@bw-db:3306/db # Remember to set a stronger password for the database
+      - DOCKER_HOST=tcp://bw-docker:2375
+    networks:
+      - bw-universe
+      - bw-docker
+  bw-docker:
+    image: tecnativa/docker-socket-proxy:nightly
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - CONTAINERS=1
+      - LOG_LEVEL=warning
+    networks:
+      - bw-docker
+  bw-ui:
+    image: bunkerity/bunkerweb-ui:1.5.5
+    depends_on:
+      - bw-docker
+    environment:
+      - DATABASE_URI=mariadb+pymysql://bunkerweb:changeme@bw-db:3306/db # Remember to set a stronger password for the database
+      - DOCKER_HOST=tcp://bw-docker:2375
+      - ADMIN_USERNAME=jahwin
+      - ADMIN_PASSWORD=yl;7R29dFwc!39Lq # Remember to set a stronger password for the changeme user
+    networks:
+      - bw-universe
+      - bw-docker
+  bw-db:
+    image: mariadb:10.10
+    environment:
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+      - MYSQL_DATABASE=db
+      - MYSQL_USER=bunkerweb
+      - MYSQL_PASSWORD=changeme
+    volumes:
+      - bw-data:/var/lib/mysql
+    networks:
+      - bw-docker
+  app:
+    build:
+      args:
+        container_project_path: /var/www/html/
+        uid: 1000
+        user: root
+      context: .
+      dockerfile: ./DockerFile
+    image: nweb
+    ports:
+      - 4000:80
+    volumes:
+      - ./:/var/www/html/
+    networks:
+      - dbnet
+      - bw-universe
+      - bw-services
+  db:
+    image: mariadb:latest
+    container_name: ndb
+    restart: unless-stopped
+    environment:
+      MARIADB_USER: root
+      MARIADB_PASSWORD: W4anw8zNMXkJ4V6SnbCJAHWIN
+      MARIADB_ROOT_PASSWORD: W4anw8zNMXkJ4V6SnbCJAHWIN
+      MARIADB_DATABASE: db_nexopos
+    ports:
+      - '4307:3306'
+    expose:
+      - '3306'
+    volumes:
+      - mysql:/var/lib/mysql
+    networks:
+      - dbnet
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    ports:
+      - 4001:80
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_PASSWORD: 'W4anw8zNMXkJ4V6SnbCJAHWIN'
+      UPLOAD_LIMIT: 100M
+    restart: unless-stopped
+    networks:
+      - dbnet
+    depends_on:
+      - db
+volumes:
+  mysql:
+    driver: local
+  bw-data:
